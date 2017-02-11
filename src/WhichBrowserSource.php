@@ -2,9 +2,14 @@
 
 namespace BrowscapHelper\Source;
 
-use Monolog\Logger;
+use Psr\Log\LoggerInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Yaml\Yaml;
+use UaResult\Browser\Browser;
+use UaResult\Device\Device;
+use UaResult\Engine\Engine;
+use UaResult\Os\Os;
+use Wurfl\Request\GenericRequestFactory;
 
 /**
  * Class DirectorySource
@@ -14,18 +19,36 @@ use Symfony\Component\Yaml\Yaml;
 class WhichBrowserSource implements SourceInterface
 {
     /**
-     * @param \Monolog\Logger                                   $logger
-     * @param \Symfony\Component\Console\Output\OutputInterface $output
-     * @param int                                               $limit
-     *
-     * @return \Generator
+     * @var \Symfony\Component\Console\Output\OutputInterface
      */
-    public function getUserAgents(Logger $logger, OutputInterface $output, $limit = 0)
+    private $output = null;
+
+    /**
+     * @var \Psr\Log\LoggerInterface
+     */
+    private $logger = null;
+
+    /**
+     * @param \Psr\Log\LoggerInterface                          $logger
+     * @param \Symfony\Component\Console\Output\OutputInterface $output
+     */
+    public function __construct(LoggerInterface $logger, OutputInterface $output)
+    {
+        $this->logger = $logger;
+        $this->output = $output;
+    }
+
+    /**
+     * @param int $limit
+     *
+     * @return string[]
+     */
+    public function getUserAgents($limit = 0)
     {
         $counter   = 0;
         $allAgents = [];
 
-        foreach ($this->loadFromPath($output) as $data) {
+        foreach ($this->loadFromPath() as $data) {
             if ($limit && $counter >= $limit) {
                 return;
             }
@@ -63,18 +86,19 @@ class WhichBrowserSource implements SourceInterface
     }
 
     /**
-     * @param \Monolog\Logger                                   $logger
-     * @param \Symfony\Component\Console\Output\OutputInterface $output
-     *
-     * @return \Generator
+     * @return \UaResult\Result\Result[]
      */
-    public function getTests(Logger $logger, OutputInterface $output)
+    public function getTests()
     {
         $allTests = [];
 
-        foreach ($this->loadFromPath($output) as $data) {
+        foreach ($this->loadFromPath() as $data) {
             foreach ($data as $row) {
                 if (!isset($row['headers']['User-Agent'])) {
+                    if (!function_exists('http_parse_headers')) {
+                        continue;
+                    }
+
                     $headers = http_parse_headers($row['headers']);
 
                     if (! isset($headers['User-Agent'])) {
@@ -94,46 +118,22 @@ class WhichBrowserSource implements SourceInterface
                     continue;
                 }
 
-                $test = [
-                    'ua'         => $agent,
-                    'properties' => [
-                        'Browser_Name'            => null,
-                        'Browser_Type'            => null,
-                        'Browser_Bits'            => null,
-                        'Browser_Maker'           => null,
-                        'Browser_Modus'           => null,
-                        'Browser_Version'         => null,
-                        'Platform_Codename'       => null,
-                        'Platform_Marketingname'  => null,
-                        'Platform_Version'        => null,
-                        'Platform_Bits'           => null,
-                        'Platform_Maker'          => null,
-                        'Platform_Brand_Name'     => null,
-                        'Device_Name'             => null,
-                        'Device_Maker'            => null,
-                        'Device_Type'             => null,
-                        'Device_Pointing_Method'  => null,
-                        'Device_Dual_Orientation' => null,
-                        'Device_Code_Name'        => null,
-                        'Device_Brand_Name'       => null,
-                        'RenderingEngine_Name'    => null,
-                        'RenderingEngine_Version' => null,
-                        'RenderingEngine_Maker'   => null,
-                    ],
-                ];
+                $request  = (new GenericRequestFactory())->createRequestForUserAgent($agent);
+                $browser  = new Browser(null);
+                $device   = new Device(null, null);
+                $platform = new Os(null, null);
+                $engine   = new Engine(null);
 
-                yield [$agent => $test];
+                yield $agent => new Result($request, $device, $platform, $browser, $engine);
                 $allTests[$agent] = 1;
             }
         }
     }
 
     /**
-     * @param \Symfony\Component\Console\Output\OutputInterface $output
-     *
-     * @return \Generator
+     * @return array[]
      */
-    private function loadFromPath(OutputInterface $output = null)
+    private function loadFromPath()
     {
         $path = 'vendor/whichbrowser/parser/tests/data';
 
@@ -141,7 +141,7 @@ class WhichBrowserSource implements SourceInterface
             return;
         }
 
-        $output->writeln('    reading path ' . $path);
+        $this->output->writeln('    reading path ' . $path);
 
         $iterator = new \RecursiveDirectoryIterator($path);
 
@@ -153,7 +153,7 @@ class WhichBrowserSource implements SourceInterface
 
             $filepath = $file->getPathname();
 
-            $output->write('    reading file ' . str_pad($filepath, 100, ' ', STR_PAD_RIGHT), false);
+            $this->output->writeln('    reading file ' . str_pad($filepath, 100, ' ', STR_PAD_RIGHT));
             switch ($file->getExtension()) {
                 case 'yaml':
                     yield Yaml::parse(file_get_contents($filepath));

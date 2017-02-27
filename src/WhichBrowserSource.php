@@ -1,5 +1,14 @@
 <?php
+/**
+ * This file is part of the browscap-helper-source-whichbrowser package.
+ *
+ * Copyright (c) 2016-2017, Thomas Mueller <mimmi20@live.de>
+ *
+ * For the full copyright and license information, please view the LICENSE
+ * file that was distributed with this source code.
+ */
 
+declare(strict_types = 1);
 namespace BrowscapHelper\Source;
 
 use Psr\Log\LoggerInterface;
@@ -160,13 +169,11 @@ class WhichBrowserSource implements SourceInterface
             // pecl_http version 1.x
             $headers = \http_parse_headers($row['headers']);
         } else {
-            return null;
+            return;
         }
 
         if (isset($headers['User-Agent'])) {
             return $headers['User-Agent'];
         }
-
-        return null;
     }
 }

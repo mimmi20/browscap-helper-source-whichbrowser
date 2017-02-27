@@ -18,6 +18,7 @@ use UaResult\Browser\Browser;
 use UaResult\Device\Device;
 use UaResult\Engine\Engine;
 use UaResult\Os\Os;
+use UaResult\Result\Result;
 use Wurfl\Request\GenericRequestFactory;
 
 /**
@@ -67,17 +68,7 @@ class WhichBrowserSource implements SourceInterface
                     return;
                 }
 
-                if (!isset($row['headers']['User-Agent'])) {
-                    $headers = http_parse_headers($row['headers']);
-
-                    if (!isset($headers['User-Agent'])) {
-                        continue;
-                    }
-
-                    $agent = $headers['User-Agent'];
-                } else {
-                    $agent = $row['headers']['User-Agent'];
-                }
+                $agent = $this->getAgentFromRow($row);
 
                 if (empty($agent)) {
                     continue;
@@ -103,21 +94,7 @@ class WhichBrowserSource implements SourceInterface
 
         foreach ($this->loadFromPath() as $data) {
             foreach ($data as $row) {
-                if (!isset($row['headers']['User-Agent'])) {
-                    if (!function_exists('http_parse_headers')) {
-                        continue;
-                    }
-
-                    $headers = http_parse_headers($row['headers']);
-
-                    if (!isset($headers['User-Agent'])) {
-                        continue;
-                    }
-
-                    $agent = $headers['User-Agent'];
-                } else {
-                    $agent = $row['headers']['User-Agent'];
-                }
+                $agent = $this->getAgentFromRow($row);
 
                 if (empty($agent)) {
                     continue;
@@ -171,6 +148,32 @@ class WhichBrowserSource implements SourceInterface
                     // do nothing here
                     break;
             }
+        }
+    }
+
+    /**
+     * @param array $row
+     *
+     * @return string|null
+     */
+    private function getAgentFromRow(array $row)
+    {
+        if (isset($row['headers']['User-Agent'])) {
+            return $row['headers']['User-Agent'];
+        }
+
+        if (class_exists('\http\Header')) {
+            // pecl_http versions 2.x/3.x
+            $headers = \http\Header::parse($row['headers']);
+        } elseif (function_exists('\http_parse_headers')) {
+            // pecl_http version 1.x
+            $headers = \http_parse_headers($row['headers']);
+        } else {
+            return;
+        }
+
+        if (isset($headers['User-Agent'])) {
+            return $headers['User-Agent'];
         }
     }
 }

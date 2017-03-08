@@ -88,9 +88,13 @@ class WhichBrowserSource implements SourceInterface
         foreach ($this->loadFromPath() as $row) {
             $row     = json_decode($row, false);
             $agent   = $row->{'User-Agent'};
+            $request = (new GenericRequestFactory())->createRequestForUserAgent($agent);
 
-            $request     = (new GenericRequestFactory())->createRequestForUserAgent($agent);
-            $browserName = (new BrowserNameMapper())->mapBrowserName($row->browser->name);
+            if (isset($row->browser->name)) {
+                $browserName = (new BrowserNameMapper())->mapBrowserName($row->browser->name);
+            } else {
+                $browserName = null;
+            }
 
             if (empty($row->browser->version->value)) {
                 $browserVersion = null;
@@ -116,39 +120,61 @@ class WhichBrowserSource implements SourceInterface
                 $browserType
             );
 
-            try {
-                $deviceType = (new DeviceTypeMapper())->mapDeviceType($this->cache, $row->device->type);
-            } catch (NotFoundException $e) {
-                $this->logger->critical($e);
+            if (isset($row->device->type)) {
+                try {
+                    $deviceType = (new DeviceTypeMapper())->mapDeviceType($this->cache, $row->device->type);
+                } catch (NotFoundException $e) {
+                    $this->logger->critical($e);
+                    $deviceType = null;
+                }
+            } else {
                 $deviceType = null;
             }
 
+            if (isset($row->device->model)) {
+                $modelname = $row->device->model;
+            } else {
+                $modelname = null;
+            }
+
             $device = new Device(
-                $row->device->model,
-                (new DeviceMarketingnameMapper())->mapDeviceMarketingName($row->device->model),
+                $modelname,
+                (new DeviceMarketingnameMapper())->mapDeviceMarketingName($modelname),
                 null,
                 null,
                 $deviceType
             );
 
-            $platform = (new PlatformNameMapper())->mapOsName($row->os->name);
+            if (isset($row->os->name)) {
+                $platform = (new PlatformNameMapper())->mapOsName($row->os->name);
 
-            if (empty($row->os->version->value)) {
-                $platformVersion = null;
+                if (empty($row->os->version->value)) {
+                    $platformVersion = null;
+                } else {
+                    $platformVersion = (new PlatformVersionMapper())->mapOsVersion($row->os->version->value, $platform);
+                }
             } else {
-                $platformVersion = (new PlatformVersionMapper())->mapOsVersion($row->os->version->value, $platform);
+                $platform        = null;
+                $platformVersion = null;
             }
 
             $os = new Os($platform, null, null, $platformVersion);
 
-            if (empty($row->engine->version->value)) {
-                $engineVersion = null;
+            if (isset($row->engine->name)) {
+                $engineName = (new EngineNameMapper())->mapEngineName($row->engine->name);
+
+                if (empty($row->engine->version->value)) {
+                    $engineVersion = null;
+                } else {
+                    $engineVersion = (new EngineVersionMapper())->mapEngineVersion($row->engine->version->value);
+                }
             } else {
-                $engineVersion = (new EngineVersionMapper())->mapEngineVersion($row->engine->version->value);
+                $engineName    = null;
+                $engineVersion = null;
             }
 
             $engine = new Engine(
-                (new EngineNameMapper())->mapEngineName($row->engine->name),
+                $engineName,
                 null,
                 $engineVersion
             );
